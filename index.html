@@ -21,11 +21,11 @@
     .q-medium { background-color: #d97706; color: #ffffff; }
     .q-economy { background-color: #64748b; color: #ffffff; }
     
-    /* Новые акценты для сроков доставки */
-    .date-today { color: #15803d; font-weight: 700; }    /* Сегодня — Насыщенный зеленый + молния */
-    .date-tomorrow { color: #0d9488; font-weight: 600; } /* Завтра — Мягкий бирюзовый (без молнии) */
-    .date-fast { color: #2563eb; font-weight: 600; }     /* Ближайшие дни (пн, вт...) — Синий */
-    .date-normal { color: #64748b; }                      /* Далекие даты — Серый */
+    /* Акценты для сроков доставки */
+    .date-today { color: #15803d; font-weight: 700; }    
+    .date-tomorrow { color: #0d9488; font-weight: 600; } 
+    .date-fast { color: #2563eb; font-weight: 600; }     
+    .date-normal { color: #64748b; }                      
 
     /* Скрытие артикула */
     .col-article { display: none; }
@@ -81,7 +81,7 @@
           <hr class="my-2">
         </div>
 
-        <!-- Верхняя панель управления (Экран) -->
+        <!-- Верхняя панель управления -->
         <div class="d-flex justify-content-between align-items-center mb-3 no-print">
           <div class="d-flex align-items-center gap-2">
             <button class="btn btn-sm btn-outline-secondary" id="btnShowInput" style="display: none;" onclick="showInputBlock()">✎ Вставить новый текст</button>
@@ -142,7 +142,7 @@
   </div>
 </div>
 
-<!-- Скрытый шаблон Товарного Чека (PDF) -->
+<!-- Скрытый шаблон Товарного Чека -->
 <div id="receiptTemplate">
   <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 15px;">
     <div>
@@ -216,28 +216,41 @@ function parseText() {
       
       let brand = "", article = "", qty = "1шт", price = 0, date = "", quality = "", country = "";
 
-      const baMatch = flat.match(/([A-Za-zА-Яа-я0-9\/\s-]+?),\s*([A-Za-z0-9-]+?)(?:,\s*\d+л)?,\s*(\d+\s*шт)/i);
-      if (baMatch) {
-        brand = baMatch[1].replace(/^\d+\.\s*/, '').replace(/^[а-я]\.\s*/i, '').trim();
-        if (brand.toLowerCase().includes(title.toLowerCase())) {
-          brand = brand.replace(new RegExp(title, 'gi'), '').trim();
+      // 1. Поиск бренда, артикула и количества (улучшенная гибкая логика)
+      const qtyMatch = flat.match(/(\d+\s*шт)/i);
+      if (qtyMatch) qty = qtyMatch[1].replace(/\s+/g, '');
+
+      // Извлекаем цепочку параметров до "шт"
+      const brandChainMatch = flat.match(/(?:[а-я]\.\s+)?([A-Za-zА-Яа-я0-9\/\s,-]+?),\s*(?:\d+л,\s*)?(\d+\s*шт)/i);
+      if (brandChainMatch) {
+        let chain = brandChainMatch[1].replace(/^\d+\.\s*/, '').replace(/^[а-я]\.\s*/i, '').trim();
+        let parts = chain.split(',').map(p => p.trim());
+        
+        brand = parts[0]; // Первое слово всегда Бренд
+        
+        // Если частей больше одной, проверяем второй элемент (артикул это или параметр типа 5w-30)
+        if (parts.length > 1) {
+          if (!/^\d+w-\d+/i.test(parts[1]) && !/^\d+л/i.test(parts[1])) {
+            article = parts[1];
+          }
         }
-        article = baMatch[2].trim();
-        qty = baMatch[3].replace(/\s+/g, '');
       }
 
-      const priceMatch = flat.match(/([\d\s]+)\s*₽\s*за\s*шт,\s*([^\n\r🥉🥈🥇]+)/i) || flat.match(/([\d\s]+)\s*₽/);
+      // 2. Цена и дата
+      const priceMatch = flat.match(/([\d\s]+)\s*₽\s*за\s*шт,\s*([^\n\r🥉🥈🥇🩹]+)/i) || flat.match(/([\d\s]+)\s*₽/);
       if (priceMatch) {
         price = parseInt(priceMatch[1].replace(/\s/g, ''));
         if (priceMatch[2]) date = priceMatch[2].trim();
       }
 
+      // 3. Качество (с поддержкой эмодзи пластыря 🩹 Эконом)
       const qMatch = flat.match(/(Отличное|Хорошее|Среднее|Эконом)\s+качество/i);
       if (qMatch) {
         quality = qMatch[1] + ' качество';
       }
 
-      const cMatch = flat.match(/качество,\s*([А-Яа-я\s,]+?)(?=\s*(?:\d+\.|$))/i);
+      // 4. Страна / Производитель
+      const cMatch = flat.match(/качество,\s*([А-Яа-я\s,]+?)(?=\s*(?:\d+\.|$|Гарантия))/i);
       if (cMatch) {
         country = cMatch[1].trim();
       }
@@ -328,13 +341,13 @@ function renderTable() {
       <td class="no-print"><input type="checkbox" class="form-check-input" onchange="toggleCheck(${index})" ${item.checked ? 'checked' : ''}></td>
       <td class="fw-bold text-dark">${item.id}</td>
       <td class="fw-semibold" style="max-width: 280px;">${item.title}</td>
-      <td><span class="badge-brand">${item.brand || 'Оригинал'}</span></td>
-      <td class="font-monospace text-secondary col-article">${item.article}</td>
+      <td><span class="badge-brand">${item.brand || '—'}</span></td>
+      <td class="font-monospace text-secondary col-article">${item.article || '—'}</td>
       <td><span class="badge badge-qty">${item.qty}</span></td>
       <td class="price-text">${item.price.toLocaleString('ru-RU')} ₽</td>
       <td>${getDateStyled(item.date)}</td>
       <td>${getQualityBadge(item.quality)}</td>
-      <td><small class="fw-semibold text-dark">${item.country || '-'}</small></td>
+      <td><small class="fw-semibold text-dark">${item.country || '—'}</small></td>
     `;
     tbody.appendChild(tr);
   });
@@ -404,8 +417,8 @@ function generatePDF() {
     tr.innerHTML = `
       <td style="border: 1px solid #000; padding: 6px; text-align: center; font-weight: bold;">${item.id}</td>
       <td style="border: 1px solid #000; padding: 6px;">${item.title}</td>
-      <td style="border: 1px solid #000; padding: 6px; text-align: center;">${item.brand || 'Оригинал'}</td>
-      ${showArticles ? `<td style="border: 1px solid #000; padding: 6px; text-align: center;">${item.article}</td>` : ''}
+      <td style="border: 1px solid #000; padding: 6px; text-align: center;">${item.brand || '—'}</td>
+      ${showArticles ? `<td style="border: 1px solid #000; padding: 6px; text-align: center;">${item.article || '—'}</td>` : ''}
       <td style="border: 1px solid #000; padding: 6px; text-align: center;">${item.qty}</td>
       <td style="border: 1px solid #000; padding: 6px; text-align: right;">${item.price.toLocaleString('ru-RU')} ₽</td>
       <td style="border: 1px solid #000; padding: 6px; text-align: right;">${itemTotal.toLocaleString('ru-RU')} ₽</td>
