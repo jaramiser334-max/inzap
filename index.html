@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Подбор запчастей</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <style>
+    body { background-color: #f8f9fa; padding: 15px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 13px; }
+    .card-custom { background: #ffffff; border-radius: 10px; border: none; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    .table td, .table th { padding: 6px 10px; vertical-align: middle; }
+    .table th { font-weight: 600; text-transform: uppercase; font-size: 11px; color: #6c757d; }
+    .price-text { color: #0d6efd; font-weight: 700; font-size: 14px; }
+    .badge-brand { background-color: #eef2f6; color: #1e293b; font-weight: 600; font-size: 12px; padding: 4px 8px; border-radius: 4px; }
+    .badge-qty { background-color: #f1f5f9; color: #475569; font-size: 12px; }
+    
+    /* Цветовые стили качества */
+    .q-badge { font-weight: 600; font-size: 11px; padding: 4px 10px; border-radius: 6px; display: inline-block; text-align: center; }
+    .q-excellent { background-color: #2563eb; color: #ffffff; }
+    .q-good { background-color: #16a34a; color: #ffffff; }
+    .q-medium { background-color: #d97706; color: #ffffff; }
+    .q-economy { background-color: #64748b; color: #ffffff; }
+    
+    /* Новые акценты для сроков доставки */
+    .date-today { color: #15803d; font-weight: 700; }    /* Сегодня — Насыщенный зеленый + молния */
+    .date-tomorrow { color: #0d9488; font-weight: 600; } /* Завтра — Мягкий бирюзовый (без молнии) */
+    .date-fast { color: #2563eb; font-weight: 600; }     /* Ближайшие дни (пн, вт...) — Синий */
+    .date-normal { color: #64748b; }                      /* Далекие даты — Серый */
+
+    /* Скрытие артикула */
+    .col-article { display: none; }
+    body.show-art .col-article { display: table-cell !important; }
+    
+    @media print {
+      .no-print { display: none !important; }
+      body { background-color: #fff; padding: 0; margin: 0; font-size: 12px; }
+      .card-custom { box-shadow: none; padding: 0 !important; }
+      .container-fluid { padding: 0; }
+      .table { border-collapse: collapse !important; width: 100% !important; }
+      .table th, .table td { border: 1px solid #dee2e6 !important; }
+      tr.not-selected { display: none !important; }
+      .print-header { display: block !important; margin-bottom: 20px; }
+      .price-text { color: #000 !important; }
+      .badge-brand { background: none !important; border: none !important; padding: 0 !important; }
+      .q-badge { border: 1px solid #ccc !important; color: #000 !important; background: none !important; }
+      .date-today, .date-tomorrow, .date-fast { color: #000 !important; font-weight: normal !important; }
+    }
+    .print-header { display: none; }
+    
+    #receiptTemplate {
+      display: none;
+      background: #fff;
+      padding: 25px;
+      font-family: Arial, sans-serif;
+      color: #000;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container-fluid">
+  <div class="row g-3">
+    
+    <!-- Левая колонка (Ввод текста) -->
+    <div class="col-lg-4 no-print" id="inputBlock">
+      <div class="card card-custom p-3">
+        <h6 class="fw-bold mb-2">Вставка текста</h6>
+        <textarea id="inputText" class="form-control mb-2" rows="10" placeholder="📌 Предложение по запчастям..."></textarea>
+        <button class="btn btn-primary w-100 fw-semibold" onclick="parseText()">Распознать и скрыть форму</button>
+      </div>
+    </div>
+
+    <!-- Правая колонка (Таблица для клиента) -->
+    <div class="col-lg-12" id="tableBlock">
+      <div class="card card-custom p-3">
+        
+        <!-- Заголовок для Печати -->
+        <div class="print-header">
+          <h4 class="fw-bold m-0">Расчет стоимости запчастей</h4>
+          <p class="text-secondary mt-1 mb-0" id="printClientInfo">Клиент: Не указан</p>
+          <hr class="my-2">
+        </div>
+
+        <!-- Верхняя панель управления (Экран) -->
+        <div class="d-flex justify-content-between align-items-center mb-3 no-print">
+          <div class="d-flex align-items-center gap-2">
+            <button class="btn btn-sm btn-outline-secondary" id="btnShowInput" style="display: none;" onclick="showInputBlock()">✎ Вставить новый текст</button>
+            <input type="text" id="clientName" class="form-control form-control-sm" style="width: 250px;" placeholder="ФИО / Телефон клиента" oninput="updateClientInfo()">
+            <button class="btn btn-sm btn-outline-dark ms-2" id="toggleArticlesBtn" onclick="toggleArticles()">👁 Показать артикулы</button>
+          </div>
+          <div class="bg-light border px-3 py-1 rounded-3">
+            <span class="text-muted me-2">ИТОГО К ОПЛАТЕ:</span>
+            <span class="fs-5 fw-bold text-primary totalSumText">0 ₽</span>
+          </div>
+        </div>
+
+        <!-- Таблица позиций -->
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th width="35" class="no-print"><input type="checkbox" class="form-check-input" id="selectAll" onchange="toggleSelectAll()"></th>
+                <th width="40">№</th>
+                <th>Наименование детали</th>
+                <th>Бренд</th>
+                <th class="col-article">Артикул</th>
+                <th width="70">Кол-во</th>
+                <th>Цена</th>
+                <th>Срок доставки</th>
+                <th>Качество</th>
+                <th>Производитель</th>
+              </tr>
+            </thead>
+            <tbody id="partsTable">
+              <tr>
+                <td colspan="10" class="text-center py-4 text-muted">Вставьте предложение слева и нажмите «Распознать»</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Итоговый блок снизу -->
+        <div class="d-flex justify-content-end align-items-center mt-3 pt-3 border-top">
+          <div class="text-end">
+            <span class="fs-6 fw-bold me-2">ИТОГО К ОПЛАТЕ:</span>
+            <span class="fs-4 fw-bold text-primary price-text totalSumText">0 ₽</span>
+          </div>
+        </div>
+
+        <!-- Кнопки управления -->
+        <div class="d-flex justify-content-between align-items-center mt-3 pt-2 border-top no-print">
+          <button class="btn btn-sm btn-outline-danger" onclick="clearAll()">Очистить всё</button>
+          <div class="d-flex gap-2">
+            <button class="btn btn-secondary px-3" onclick="window.print()">Быстрая печать</button>
+            <button class="btn btn-success px-4 fw-semibold" onclick="generatePDF()">Скачать Товарный чек (PDF)</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Скрытый шаблон Товарного Чека (PDF) -->
+<div id="receiptTemplate">
+  <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 15px;">
+    <div>
+      <h3 style="margin: 0; font-size: 18px; text-transform: uppercase;">Товарный чек № <span id="pdfDocNum"></span></h3>
+      <p style="margin: 5px 0 0 0; font-size: 12px; color: #555;">Дата: <span id="pdfDocDate"></span></p>
+    </div>
+    <div style="text-align: right; font-size: 11px; color: #333;">
+      <strong>Автозапчасти</strong><br>
+      Подбор и продажа
+    </div>
+  </div>
+
+  <div style="margin-bottom: 15px; font-size: 12px;">
+    <strong>Покупатель (Клиент):</strong> <span id="pdfClientName">Не указан</span>
+  </div>
+
+  <table style="width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 15px;">
+    <thead>
+      <tr style="background: #f2f2f2;">
+        <th style="border: 1px solid #000; padding: 6px; text-align: center; width: 35px;">№</th>
+        <th style="border: 1px solid #000; padding: 6px; text-align: left;">Наименование товара</th>
+        <th style="border: 1px solid #000; padding: 6px; text-align: center;">Бренд</th>
+        <th class="pdf-article-head" style="border: 1px solid #000; padding: 6px; text-align: center; display: none;">Артикул</th>
+        <th style="border: 1px solid #000; padding: 6px; text-align: center; width: 50px;">Кол-во</th>
+        <th style="border: 1px solid #000; padding: 6px; text-align: right; width: 70px;">Цена</th>
+        <th style="border: 1px solid #000; padding: 6px; text-align: right; width: 80px;">Сумма</th>
+      </tr>
+    </thead>
+    <tbody id="pdfTableBody">
+    </tbody>
+  </table>
+
+  <div style="text-align: right; font-size: 14px; font-weight: bold; margin-bottom: 25px;">
+    ИТОГО К ОПЛАТЕ: <span id="pdfTotalSum">0 ₽</span>
+  </div>
+
+  <div style="display: flex; justify-content: space-between; margin-top: 40px; font-size: 11px;">
+    <div>Продавец: _________________ (Подпись)</div>
+    <div>Покупатель: _________________ (Подпись)</div>
+  </div>
+</div>
+
+<script>
+let itemsData = [];
+let showArticles = false;
+
+function parseText() {
+  const text = document.getElementById('inputText').value;
+  if (!text.trim()) return;
+
+  const cleanText = text.split(/🛒/)[0];
+  const blocks = cleanText.split(/(?=\b\d+\.\s+)/);
+  itemsData = [];
+  let counter = 1;
+
+  blocks.forEach(block => {
+    if (!/^\d+\./.test(block.trim())) return;
+
+    const lines = block.trim().split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const title = lines[0].replace(/^\d+\.\s*/, '').trim();
+
+    let subBlocks = [];
+    if (/[а-я]\.\s+/.test(block)) {
+      subBlocks = block.split(/(?=[а-я]\.\s+)/).slice(1);
+    } else {
+      subBlocks = [block];
+    }
+
+    subBlocks.forEach(sub => {
+      const flat = sub.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+      
+      let brand = "", article = "", qty = "1шт", price = 0, date = "", quality = "", country = "";
+
+      const baMatch = flat.match(/([A-Za-zА-Яа-я0-9\/\s-]+?),\s*([A-Za-z0-9-]+?)(?:,\s*\d+л)?,\s*(\d+\s*шт)/i);
+      if (baMatch) {
+        brand = baMatch[1].replace(/^\d+\.\s*/, '').replace(/^[а-я]\.\s*/i, '').trim();
+        if (brand.toLowerCase().includes(title.toLowerCase())) {
+          brand = brand.replace(new RegExp(title, 'gi'), '').trim();
+        }
+        article = baMatch[2].trim();
+        qty = baMatch[3].replace(/\s+/g, '');
+      }
+
+      const priceMatch = flat.match(/([\d\s]+)\s*₽\s*за\s*шт,\s*([^\n\r🥉🥈🥇]+)/i) || flat.match(/([\d\s]+)\s*₽/);
+      if (priceMatch) {
+        price = parseInt(priceMatch[1].replace(/\s/g, ''));
+        if (priceMatch[2]) date = priceMatch[2].trim();
+      }
+
+      const qMatch = flat.match(/(Отличное|Хорошее|Среднее|Эконом)\s+качество/i);
+      if (qMatch) {
+        quality = qMatch[1] + ' качество';
+      }
+
+      const cMatch = flat.match(/качество,\s*([А-Яа-я\s,]+?)(?=\s*(?:\d+\.|$))/i);
+      if (cMatch) {
+        country = cMatch[1].trim();
+      }
+
+      if (price > 0 || brand !== "") {
+        itemsData.push({ id: counter++, checked: false, title, brand, article, qty, price, date, quality, country });
+      }
+    });
+  });
+
+  document.getElementById('inputBlock').style.display = 'none';
+  document.getElementById('tableBlock').className = 'col-lg-12';
+  document.getElementById('btnShowInput').style.display = 'inline-block';
+
+  renderTable();
+}
+
+function getQualityBadge(qualityText) {
+  if (!qualityText) return '-';
+  const qLower = qualityText.toLowerCase();
+  
+  if (qLower.includes('отличное')) {
+    return `<span class="q-badge q-excellent">Отличное качество</span>`;
+  } else if (qLower.includes('хорошее')) {
+    return `<span class="q-badge q-good">Хорошее качество</span>`;
+  } else if (qLower.includes('среднее')) {
+    return `<span class="q-badge q-medium">Среднее качество</span>`;
+  } else if (qLower.includes('эконом')) {
+    return `<span class="q-badge q-economy">Эконом качество</span>`;
+  }
+  return `<span class="q-badge q-economy">${qualityText}</span>`;
+}
+
+function getDateStyled(dateText) {
+  if (!dateText) return '-';
+  const dLower = dateText.toLowerCase();
+  
+  if (dLower.includes('сегодня')) {
+    return `<span class="date-today">⚡ сегодня</span>`;
+  } else if (dLower.includes('завтра')) {
+    return `<span class="date-tomorrow">завтра</span>`;
+  } else if (dLower.includes('пн') || dLower.includes('вт') || dLower.includes('ср') || dLower.includes('чт') || dLower.includes('пт') || dLower.includes('сб') || dLower.includes('вс')) {
+    return `<span class="date-fast">${dateText}</span>`;
+  }
+  return `<span class="date-normal">${dateText}</span>`;
+}
+
+function toggleArticles() {
+  showArticles = !showArticles;
+  const btn = document.getElementById('toggleArticlesBtn');
+  btn.innerText = showArticles ? '🙈 Скрыть артикулы' : '👁 Показать артикулы';
+  btn.className = showArticles ? 'btn btn-sm btn-warning ms-2' : 'btn btn-sm btn-outline-dark ms-2';
+  
+  if (showArticles) {
+    document.body.classList.add('show-art');
+  } else {
+    document.body.classList.remove('show-art');
+  }
+}
+
+function showInputBlock() {
+  document.getElementById('inputBlock').style.display = 'block';
+  document.getElementById('tableBlock').className = 'col-lg-8';
+  document.getElementById('btnShowInput').style.display = 'none';
+}
+
+function updateClientInfo() {
+  const val = document.getElementById('clientName').value.trim();
+  document.getElementById('printClientInfo').innerText = val ? 'Клиент: ' + val : 'Клиент: Не указан';
+}
+
+function renderTable() {
+  const tbody = document.getElementById('partsTable');
+  tbody.innerHTML = '';
+
+  if (itemsData.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="10" class="text-center py-4 text-muted">Не удалось распознать запчасти</td></tr>';
+    return;
+  }
+
+  itemsData.forEach((item, index) => {
+    const tr = document.createElement('tr');
+    if (!item.checked) {
+      tr.className = 'not-selected';
+    }
+    
+    tr.innerHTML = `
+      <td class="no-print"><input type="checkbox" class="form-check-input" onchange="toggleCheck(${index})" ${item.checked ? 'checked' : ''}></td>
+      <td class="fw-bold text-dark">${item.id}</td>
+      <td class="fw-semibold" style="max-width: 280px;">${item.title}</td>
+      <td><span class="badge-brand">${item.brand || 'Оригинал'}</span></td>
+      <td class="font-monospace text-secondary col-article">${item.article}</td>
+      <td><span class="badge badge-qty">${item.qty}</span></td>
+      <td class="price-text">${item.price.toLocaleString('ru-RU')} ₽</td>
+      <td>${getDateStyled(item.date)}</td>
+      <td>${getQualityBadge(item.quality)}</td>
+      <td><small class="fw-semibold text-dark">${item.country || '-'}</small></td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  calculateTotal();
+}
+
+function toggleCheck(index) {
+  itemsData[index].checked = !itemsData[index].checked;
+  renderTable();
+}
+
+function toggleSelectAll() {
+  const selectAll = document.getElementById('selectAll').checked;
+  itemsData.forEach(item => item.checked = selectAll);
+  renderTable();
+}
+
+function calculateTotal() {
+  const total = itemsData.reduce((sum, item) => item.checked ? sum + item.price : sum, 0);
+  const elements = document.querySelectorAll('.totalSumText');
+  elements.forEach(el => el.innerText = total.toLocaleString('ru-RU') + ' ₽');
+}
+
+function clearAll() {
+  document.getElementById('inputText').value = '';
+  document.getElementById('clientName').value = '';
+  updateClientInfo();
+  itemsData = [];
+  showArticles = false;
+  document.body.classList.remove('show-art');
+  document.getElementById('toggleArticlesBtn').innerText = '👁 Показать артикулы';
+  document.getElementById('toggleArticlesBtn').className = 'btn btn-sm btn-outline-dark ms-2';
+  showInputBlock();
+  renderTable();
+}
+
+function generatePDF() {
+  const selectedItems = itemsData.filter(item => item.checked);
+  
+  if (selectedItems.length === 0) {
+    alert('Пожалуйста, выберите хотя бы одну позицию для чека!');
+    return;
+  }
+
+  const clientName = document.getElementById('clientName').value.trim() || 'Не указан';
+  const docNum = Math.floor(1000 + Math.random() * 9000);
+  const today = new Date().toLocaleDateString('ru-RU');
+
+  document.getElementById('pdfDocNum').innerText = docNum;
+  document.getElementById('pdfDocDate').innerText = today;
+  document.getElementById('pdfClientName').innerText = clientName;
+
+  const pdfBody = document.getElementById('pdfTableBody');
+  const pdfArtHead = document.querySelector('.pdf-article-head');
+  
+  pdfArtHead.style.display = showArticles ? 'table-cell' : 'none';
+
+  pdfBody.innerHTML = '';
+  let grandTotal = 0;
+
+  selectedItems.forEach((item) => {
+    const itemTotal = item.price;
+    grandTotal += itemTotal;
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="border: 1px solid #000; padding: 6px; text-align: center; font-weight: bold;">${item.id}</td>
+      <td style="border: 1px solid #000; padding: 6px;">${item.title}</td>
+      <td style="border: 1px solid #000; padding: 6px; text-align: center;">${item.brand || 'Оригинал'}</td>
+      ${showArticles ? `<td style="border: 1px solid #000; padding: 6px; text-align: center;">${item.article}</td>` : ''}
+      <td style="border: 1px solid #000; padding: 6px; text-align: center;">${item.qty}</td>
+      <td style="border: 1px solid #000; padding: 6px; text-align: right;">${item.price.toLocaleString('ru-RU')} ₽</td>
+      <td style="border: 1px solid #000; padding: 6px; text-align: right;">${itemTotal.toLocaleString('ru-RU')} ₽</td>
+    `;
+    pdfBody.appendChild(tr);
+  });
+
+  document.getElementById('pdfTotalSum').innerText = grandTotal.toLocaleString('ru-RU') + ' ₽';
+
+  const element = document.getElementById('receiptTemplate');
+  element.style.display = 'block';
+
+  const opt = {
+    margin:       10,
+    filename:     `Товарный_чек_${docNum}_${clientName.replace(/\s+/g, '_')}.pdf`,
+    image:        { type: 'jpeg', quality: 0.98 },
+    html2canvas:  { scale: 2 },
+    jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+  };
+
+  html2pdf().set(opt).from(element).save().then(() => {
+    element.style.display = 'none';
+  });
+}
+</script>
+
+</body>
+</html>
