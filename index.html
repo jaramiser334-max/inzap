@@ -216,19 +216,27 @@ function parseText() {
       
       let brand = "", article = "", qty = "1шт", price = 0, date = "", quality = "", country = "";
 
-      // 1. Поиск бренда, артикула и количества (улучшенная гибкая логика)
+      // 1. Поиск количества
       const qtyMatch = flat.match(/(\d+\s*шт)/i);
       if (qtyMatch) qty = qtyMatch[1].replace(/\s+/g, '');
 
-      // Извлекаем цепочку параметров до "шт"
+      // 2. Извлечение цепочки бренда
       const brandChainMatch = flat.match(/(?:[а-я]\.\s+)?([A-Za-zА-Яа-я0-9\/\s,-]+?),\s*(?:\d+л,\s*)?(\d+\s*шт)/i);
       if (brandChainMatch) {
         let chain = brandChainMatch[1].replace(/^\d+\.\s*/, '').replace(/^[а-я]\.\s*/i, '').trim();
-        let parts = chain.split(',').map(p => p.trim());
         
-        brand = parts[0]; // Первое слово всегда Бренд
+        // Очистка от продублированного названия детали
+        if (title) {
+          const escTitle = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          chain = chain.replace(new RegExp(escTitle, 'gi'), '').trim();
+        }
+
+        let parts = chain.split(',').map(p => p.trim()).filter(Boolean);
         
-        // Если частей больше одной, проверяем второй элемент (артикул это или параметр типа 5w-30)
+        if (parts.length > 0) {
+          brand = parts[0];
+        }
+        
         if (parts.length > 1) {
           if (!/^\d+w-\d+/i.test(parts[1]) && !/^\d+л/i.test(parts[1])) {
             article = parts[1];
@@ -236,20 +244,20 @@ function parseText() {
         }
       }
 
-      // 2. Цена и дата
+      // 3. Цена и дата
       const priceMatch = flat.match(/([\d\s]+)\s*₽\s*за\s*шт,\s*([^\n\r🥉🥈🥇🩹]+)/i) || flat.match(/([\d\s]+)\s*₽/);
       if (priceMatch) {
         price = parseInt(priceMatch[1].replace(/\s/g, ''));
         if (priceMatch[2]) date = priceMatch[2].trim();
       }
 
-      // 3. Качество (с поддержкой эмодзи пластыря 🩹 Эконом)
+      // 4. Качество
       const qMatch = flat.match(/(Отличное|Хорошее|Среднее|Эконом)\s+качество/i);
       if (qMatch) {
         quality = qMatch[1] + ' качество';
       }
 
-      // 4. Страна / Производитель
+      // 5. Страна / Производитель
       const cMatch = flat.match(/качество,\s*([А-Яа-я\s,]+?)(?=\s*(?:\d+\.|$|Гарантия))/i);
       if (cMatch) {
         country = cMatch[1].trim();
