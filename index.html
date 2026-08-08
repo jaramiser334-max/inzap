@@ -131,6 +131,7 @@
         <div class="d-flex justify-content-between align-items-center mt-3 pt-2 border-top no-print">
           <button class="btn btn-sm btn-outline-danger" onclick="clearAll()">Очистить всё</button>
           <div class="d-flex gap-2">
+            <button class="btn btn-primary px-3 fw-semibold" id="btnSaveToDb" onclick="saveToGoogleSheets()">💾 Сохранить в БД</button>
             <button class="btn btn-secondary px-3" onclick="window.print()">Быстрая печать</button>
             <button class="btn btn-success px-4 fw-semibold" onclick="generatePDF()">Скачать Товарный чек (PDF)</button>
           </div>
@@ -186,6 +187,9 @@
 </div>
 
 <script>
+// Вставлена ссылка из вашего развертывания Google Apps Script
+const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx7CV_3PRfY6izqUmiQJrffNmY9WBKMq_iVSNyQtBx5czl-d4rI8PTnP0aqaqjBDbt8_A/exec";
+
 let itemsData = [];
 let showArticles = false;
 
@@ -216,27 +220,20 @@ function parseText() {
       
       let brand = "", article = "", qty = "1шт", price = 0, date = "", quality = "", country = "";
 
-      // 1. Поиск количества
       const qtyMatch = flat.match(/(\d+\s*шт)/i);
       if (qtyMatch) qty = qtyMatch[1].replace(/\s+/g, '');
 
-      // 2. Извлечение цепочки бренда
       const brandChainMatch = flat.match(/(?:[а-я]\.\s+)?([A-Za-zА-Яа-я0-9\/\s,-]+?),\s*(?:\d+л,\s*)?(\d+\s*шт)/i);
       if (brandChainMatch) {
         let chain = brandChainMatch[1].replace(/^\d+\.\s*/, '').replace(/^[а-я]\.\s*/i, '').trim();
         
-        // Очистка от продублированного названия детали
         if (title) {
           const escTitle = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
           chain = chain.replace(new RegExp(escTitle, 'gi'), '').trim();
         }
 
         let parts = chain.split(',').map(p => p.trim()).filter(Boolean);
-        
-        if (parts.length > 0) {
-          brand = parts[0];
-        }
-        
+        if (parts.length > 0) brand = parts[0];
         if (parts.length > 1) {
           if (!/^\d+w-\d+/i.test(parts[1]) && !/^\d+л/i.test(parts[1])) {
             article = parts[1];
@@ -244,24 +241,17 @@ function parseText() {
         }
       }
 
-      // 3. Цена и дата
       const priceMatch = flat.match(/([\d\s]+)\s*₽\s*за\s*шт,\s*([^\n\r🥉🥈🥇🩹]+)/i) || flat.match(/([\d\s]+)\s*₽/);
       if (priceMatch) {
         price = parseInt(priceMatch[1].replace(/\s/g, ''));
         if (priceMatch[2]) date = priceMatch[2].trim();
       }
 
-      // 4. Качество
       const qMatch = flat.match(/(Отличное|Хорошее|Среднее|Эконом)\s+качество/i);
-      if (qMatch) {
-        quality = qMatch[1] + ' качество';
-      }
+      if (qMatch) quality = qMatch[1] + ' качество';
 
-      // 5. Страна / Производитель
       const cMatch = flat.match(/качество,\s*([А-Яа-я\s,]+?)(?=\s*(?:\d+\.|$|Гарантия))/i);
-      if (cMatch) {
-        country = cMatch[1].trim();
-      }
+      if (cMatch) country = cMatch[1].trim();
 
       if (price > 0 || brand !== "") {
         itemsData.push({ id: counter++, checked: false, title, brand, article, qty, price, date, quality, country });
@@ -280,15 +270,10 @@ function getQualityBadge(qualityText) {
   if (!qualityText) return '-';
   const qLower = qualityText.toLowerCase();
   
-  if (qLower.includes('отличное')) {
-    return `<span class="q-badge q-excellent">Отличное качество</span>`;
-  } else if (qLower.includes('хорошее')) {
-    return `<span class="q-badge q-good">Хорошее качество</span>`;
-  } else if (qLower.includes('среднее')) {
-    return `<span class="q-badge q-medium">Среднее качество</span>`;
-  } else if (qLower.includes('эконом')) {
-    return `<span class="q-badge q-economy">Эконом качество</span>`;
-  }
+  if (qLower.includes('отличное')) return `<span class="q-badge q-excellent">Отличное качество</span>`;
+  if (qLower.includes('хорошее')) return `<span class="q-badge q-good">Хорошее качество</span>`;
+  if (qLower.includes('среднее')) return `<span class="q-badge q-medium">Среднее качество</span>`;
+  if (qLower.includes('эконом')) return `<span class="q-badge q-economy">Эконом качество</span>`;
   return `<span class="q-badge q-economy">${qualityText}</span>`;
 }
 
@@ -296,13 +281,9 @@ function getDateStyled(dateText) {
   if (!dateText) return '-';
   const dLower = dateText.toLowerCase();
   
-  if (dLower.includes('сегодня')) {
-    return `<span class="date-today">⚡ сегодня</span>`;
-  } else if (dLower.includes('завтра')) {
-    return `<span class="date-tomorrow">завтра</span>`;
-  } else if (dLower.includes('пн') || dLower.includes('вт') || dLower.includes('ср') || dLower.includes('чт') || dLower.includes('пт') || dLower.includes('сб') || dLower.includes('вс')) {
-    return `<span class="date-fast">${dateText}</span>`;
-  }
+  if (dLower.includes('сегодня')) return `<span class="date-today">⚡ сегодня</span>`;
+  if (dLower.includes('завтра')) return `<span class="date-tomorrow">завтра</span>`;
+  if (dLower.includes('пн') || dLower.includes('вт') || dLower.includes('ср') || dLower.includes('чт') || dLower.includes('пт') || dLower.includes('сб') || dLower.includes('вс')) return `<span class="date-fast">${dateText}</span>`;
   return `<span class="date-normal">${dateText}</span>`;
 }
 
@@ -312,11 +293,8 @@ function toggleArticles() {
   btn.innerText = showArticles ? '🙈 Скрыть артикулы' : '👁 Показать артикулы';
   btn.className = showArticles ? 'btn btn-sm btn-warning ms-2' : 'btn btn-sm btn-outline-dark ms-2';
   
-  if (showArticles) {
-    document.body.classList.add('show-art');
-  } else {
-    document.body.classList.remove('show-art');
-  }
+  if (showArticles) document.body.classList.add('show-art');
+  else document.body.classList.remove('show-art');
 }
 
 function showInputBlock() {
@@ -341,9 +319,7 @@ function renderTable() {
 
   itemsData.forEach((item, index) => {
     const tr = document.createElement('tr');
-    if (!item.checked) {
-      tr.className = 'not-selected';
-    }
+    if (!item.checked) tr.className = 'not-selected';
     
     tr.innerHTML = `
       <td class="no-print"><input type="checkbox" class="form-check-input" onchange="toggleCheck(${index})" ${item.checked ? 'checked' : ''}></td>
@@ -391,6 +367,44 @@ function clearAll() {
   document.getElementById('toggleArticlesBtn').className = 'btn btn-sm btn-outline-dark ms-2';
   showInputBlock();
   renderTable();
+}
+
+// Отправка выбранного заказа в Google Таблицу
+function saveToGoogleSheets() {
+  const selectedItems = itemsData.filter(item => item.checked);
+  
+  if (selectedItems.length === 0) {
+    alert('Пожалуйста, выберите хотя бы одну позицию для сохранения!');
+    return;
+  }
+
+  const btn = document.getElementById('btnSaveToDb');
+  btn.disabled = true;
+  btn.innerText = '⏳ Сохранение...';
+
+  const clientName = document.getElementById('clientName').value.trim() || 'Не указан';
+  const totalSum = itemsData.reduce((sum, item) => item.checked ? sum + item.price : sum, 0);
+
+  const payload = {
+    client: clientName,
+    total: totalSum,
+    items: selectedItems
+  };
+
+  fetch(GOOGLE_SCRIPT_URL, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  }).then(() => {
+    alert('✅ Заказ успешно сохранен в Google Таблицу!');
+    btn.disabled = false;
+    btn.innerText = '💾 Сохранить в БД';
+  }).catch(err => {
+    alert('❌ Ошибка сохранения: ' + err);
+    btn.disabled = false;
+    btn.innerText = '💾 Сохранить в БД';
+  });
 }
 
 function generatePDF() {
