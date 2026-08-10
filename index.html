@@ -193,7 +193,7 @@ const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyTeL24qSqKCa
 
 let itemsData = [];
 let showArticles = false;
-let currentDiscountPercent = 0; // Переменная текущей скидки / наценки
+let currentDiscountPercent = 0;
 
 function parseText() {
   const text = document.getElementById('inputText').value;
@@ -203,7 +203,7 @@ function parseText() {
   const blocks = cleanText.split(/(?=\b\d+\.\s+)/);
   itemsData = [];
   let counter = 1;
-  currentDiscountPercent = 0; // сбрасываем процент при новом разборе
+  currentDiscountPercent = 0;
 
   blocks.forEach(block => {
     if (!/^\d+\./.test(block.trim())) return;
@@ -223,9 +223,11 @@ function parseText() {
       
       let brand = "", article = "", qty = "1шт", price = 0, date = "", quality = "", country = "";
 
+      // 1. Поиск количества
       const qtyMatch = flat.match(/(\d+\s*шт)/i);
       if (qtyMatch) qty = qtyMatch[1].replace(/\s+/g, '');
 
+      // 2. Извлечение бренда и артикула
       const brandChainMatch = flat.match(/(?:[а-я]\.\s+)?([A-Za-zА-Яа-я0-9\/\s,-]+?),\s*(?:\d+л,\s*)?(\d+\s*шт)/i);
       if (brandChainMatch) {
         let chain = brandChainMatch[1].replace(/^\d+\.\s*/, '').replace(/^[а-я]\.\s*/i, '').trim();
@@ -236,7 +238,16 @@ function parseText() {
         }
 
         let parts = chain.split(',').map(p => p.trim()).filter(Boolean);
-        if (parts.length > 0) brand = parts[0];
+        
+        if (parts.length > 0) {
+          // Проверяем, не является ли первое слово чистым артикулом
+          if (/^[A-Z0-9\/-]{5,}$/i.test(parts[0]) && !/^[A-Za-z]+$/i.test(parts[0])) {
+            article = parts[0];
+          } else {
+            brand = parts[0];
+          }
+        }
+        
         if (parts.length > 1) {
           if (!/^\d+w-\d+/i.test(parts[1]) && !/^\d+л/i.test(parts[1])) {
             article = parts[1];
@@ -244,15 +255,24 @@ function parseText() {
         }
       }
 
+      // Если бренд не распознался из цепочки, ищем бренд по отдельному шаблону
+      if (!brand) {
+        const brandMatch = flat.match(/(?:^|\s)([A-Z][A-Za-z0-9\/\s-]+?)(?:,\s*|\s+[A-Z0-9-]{3,}|\s+\d+шт)/);
+        if (brandMatch) brand = brandMatch[1].trim();
+      }
+
+      // 3. Поиск цены и срока доставки
       const priceMatch = flat.match(/([\d\s]+)\s*₽\s*за\s*шт,\s*([^\n\r🥉🥈🥇🩹]+)/i) || flat.match(/([\d\s]+)\s*₽/);
       if (priceMatch) {
         price = parseInt(priceMatch[1].replace(/\s/g, ''));
         if (priceMatch[2]) date = priceMatch[2].trim();
       }
 
+      // 4. Поиск качества
       const qMatch = flat.match(/(Отличное|Хорошее|Среднее|Эконом)\s+качество/i);
       if (qMatch) quality = qMatch[1] + ' качество';
 
+      // 5. Поиск страны
       const cMatch = flat.match(/качество,\s*([А-Яа-я\s,]+?)(?=\s*(?:\d+\.|$|Гарантия))/i);
       if (cMatch) country = cMatch[1].trim();
 
@@ -264,8 +284,8 @@ function parseText() {
           brand, 
           article, 
           qty, 
-          basePrice: price,  // Базовая цена
-          price: price,      // Текущая цена с учетом %
+          basePrice: price, 
+          price: price, 
           date, 
           quality, 
           country 
@@ -281,7 +301,6 @@ function parseText() {
   renderTable();
 }
 
-// Функция всплывающего окна для задания процента скидки/наценки
 function applyDiscountPrompt() {
   if (itemsData.length === 0) {
     alert('Сначала распознайте список запчастей!');
@@ -296,7 +315,7 @@ function applyDiscountPrompt() {
     currentDiscountPercent !== 0 ? currentDiscountPercent : ''
   );
 
-  if (input === null) return; // нажата отмена
+  if (input === null) return;
 
   const percent = parseFloat(input.replace(',', '.'));
   if (isNaN(percent)) {
@@ -306,17 +325,14 @@ function applyDiscountPrompt() {
 
   currentDiscountPercent = percent;
 
-  // Пересчитываем цены у всех позиций
   itemsData.forEach(item => {
     if (percent === 0) {
       item.price = item.basePrice;
     } else {
-      // Рассчитываем и округляем до целых рублей
       item.price = Math.round(item.basePrice * (1 + percent / 100));
     }
   });
 
-  // Визуально подсвечиваем кнопку %, если скидка активна
   const btn = document.getElementById('discountBtn');
   if (percent !== 0) {
     btn.className = 'btn btn-sm btn-primary ms-1 fw-bold';
@@ -432,7 +448,6 @@ function clearAll() {
   renderTable();
 }
 
-// Отправка данных в Google Таблицу
 function saveToGoogleSheets() {
   const selectedItems = itemsData.filter(item => item.checked);
   
