@@ -86,7 +86,8 @@
           <div class="d-flex align-items-center gap-2">
             <button class="btn btn-sm btn-outline-secondary" id="btnShowInput" style="display: none;" onclick="showInputBlock()">✎ Вставить новый текст</button>
             <input type="text" id="clientName" class="form-control form-control-sm" style="width: 250px;" placeholder="ФИО / Телефон клиента" oninput="updateClientInfo()">
-            <button class="btn btn-sm btn-outline-dark ms-2" id="toggleArticlesBtn" onclick="toggleArticles()">👁</button>
+            <button class="btn btn-sm btn-outline-dark ms-1" id="toggleArticlesBtn" onclick="toggleArticles()" title="Показать/скрыть артикулы">👁</button>
+            <button class="btn btn-sm btn-outline-primary ms-1 fw-bold" id="discountBtn" onclick="applyDiscountPrompt()" title="Изменить стоимость (%)">%</button>
           </div>
           <div class="bg-light border px-3 py-1 rounded-3">
             <span class="text-muted me-2">ИТОГО К ОПЛАТЕ:</span>
@@ -187,11 +188,12 @@
 </div>
 
 <script>
-// Вставлена ваша актуальная ссылка Google Apps Script
+// Ваша ссылка Google Apps Script
 const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyTeL24qSqKCa9jimIjiUEKkxEJGCefKbfaNu3fkZDPQgMi2gd9cTsCgPtnl9Vk18nncg/exec";
 
 let itemsData = [];
 let showArticles = false;
+let currentDiscountPercent = 0; // Переменная текущей скидки / наценки
 
 function parseText() {
   const text = document.getElementById('inputText').value;
@@ -201,6 +203,7 @@ function parseText() {
   const blocks = cleanText.split(/(?=\b\d+\.\s+)/);
   itemsData = [];
   let counter = 1;
+  currentDiscountPercent = 0; // сбрасываем процент при новом разборе
 
   blocks.forEach(block => {
     if (!/^\d+\./.test(block.trim())) return;
@@ -254,7 +257,19 @@ function parseText() {
       if (cMatch) country = cMatch[1].trim();
 
       if (price > 0 || brand !== "") {
-        itemsData.push({ id: counter++, checked: false, title, brand, article, qty, price, date, quality, country });
+        itemsData.push({ 
+          id: counter++, 
+          checked: false, 
+          title, 
+          brand, 
+          article, 
+          qty, 
+          basePrice: price,  // Базовая цена
+          price: price,      // Текущая цена с учетом %
+          date, 
+          quality, 
+          country 
+        });
       }
     });
   });
@@ -262,6 +277,52 @@ function parseText() {
   document.getElementById('inputBlock').style.display = 'none';
   document.getElementById('tableBlock').className = 'col-lg-12';
   document.getElementById('btnShowInput').style.display = 'inline-block';
+
+  renderTable();
+}
+
+// Функция всплывающего окна для задания процента скидки/наценки
+function applyDiscountPrompt() {
+  if (itemsData.length === 0) {
+    alert('Сначала распознайте список запчастей!');
+    return;
+  }
+
+  const input = prompt(
+    'Введите процент изменения цены:\n\n' +
+    '• Для СКИДКИ введите минус, например: -10\n' +
+    '• Для НАЦЕНКИ введите плюс, например: 10\n' +
+    '• Введите 0 для сброса',
+    currentDiscountPercent !== 0 ? currentDiscountPercent : ''
+  );
+
+  if (input === null) return; // нажата отмена
+
+  const percent = parseFloat(input.replace(',', '.'));
+  if (isNaN(percent)) {
+    alert('Пожалуйста, введите корректное число!');
+    return;
+  }
+
+  currentDiscountPercent = percent;
+
+  // Пересчитываем цены у всех позиций
+  itemsData.forEach(item => {
+    if (percent === 0) {
+      item.price = item.basePrice;
+    } else {
+      // Рассчитываем и округляем до целых рублей
+      item.price = Math.round(item.basePrice * (1 + percent / 100));
+    }
+  });
+
+  // Визуально подсвечиваем кнопку %, если скидка активна
+  const btn = document.getElementById('discountBtn');
+  if (percent !== 0) {
+    btn.className = 'btn btn-sm btn-primary ms-1 fw-bold';
+  } else {
+    btn.className = 'btn btn-sm btn-outline-primary ms-1 fw-bold';
+  }
 
   renderTable();
 }
@@ -291,7 +352,7 @@ function toggleArticles() {
   showArticles = !showArticles;
   const btn = document.getElementById('toggleArticlesBtn');
   btn.innerText = showArticles ? '🙈' : '👁';
-  btn.className = showArticles ? 'btn btn-sm btn-warning ms-2' : 'btn btn-sm btn-outline-dark ms-2';
+  btn.className = showArticles ? 'btn btn-sm btn-warning ms-1' : 'btn btn-sm btn-outline-dark ms-1';
   
   if (showArticles) document.body.classList.add('show-art');
   else document.body.classList.remove('show-art');
@@ -313,7 +374,7 @@ function renderTable() {
   tbody.innerHTML = '';
 
   if (itemsData.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="10" class="text-center py-4 text-muted">Не удалось распознать запчасти</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" class="text-center py-4 text-muted">Вставьте предложение слева и нажмите «Распознать»</td></tr>';
     return;
   }
 
@@ -362,9 +423,11 @@ function clearAll() {
   updateClientInfo();
   itemsData = [];
   showArticles = false;
+  currentDiscountPercent = 0;
   document.body.classList.remove('show-art');
   document.getElementById('toggleArticlesBtn').innerText = '👁';
-  document.getElementById('toggleArticlesBtn').className = 'btn btn-sm btn-outline-dark ms-2';
+  document.getElementById('toggleArticlesBtn').className = 'btn btn-sm btn-outline-dark ms-1';
+  document.getElementById('discountBtn').className = 'btn btn-sm btn-outline-primary ms-1 fw-bold';
   showInputBlock();
   renderTable();
 }
