@@ -86,7 +86,7 @@
           <div class="d-flex align-items-center gap-2">
             <button class="btn btn-sm btn-outline-secondary" id="btnShowInput" style="display: none;" onclick="showInputBlock()">✎ Вставить новый текст</button>
             <input type="text" id="clientName" class="form-control form-control-sm" style="width: 250px;" placeholder="ФИО / Телефон клиента" oninput="updateClientInfo()">
-            <button class="btn btn-sm btn-outline-dark ms-2" id="toggleArticlesBtn" onclick="toggleArticles()">👁 Показать артикулы</button>
+            <button class="btn btn-sm btn-outline-dark ms-2" id="toggleArticlesBtn" onclick="toggleArticles()">👁</button>
           </div>
           <div class="bg-light border px-3 py-1 rounded-3">
             <span class="text-muted me-2">ИТОГО К ОПЛАТЕ:</span>
@@ -290,7 +290,7 @@ function getDateStyled(dateText) {
 function toggleArticles() {
   showArticles = !showArticles;
   const btn = document.getElementById('toggleArticlesBtn');
-  btn.innerText = showArticles ? '🙈 Скрыть артикулы' : '👁 Показать артикулы';
+  btn.innerText = showArticles ? '🙈' : '👁';
   btn.className = showArticles ? 'btn btn-sm btn-warning ms-2' : 'btn btn-sm btn-outline-dark ms-2';
   
   if (showArticles) document.body.classList.add('show-art');
@@ -363,7 +363,7 @@ function clearAll() {
   itemsData = [];
   showArticles = false;
   document.body.classList.remove('show-art');
-  document.getElementById('toggleArticlesBtn').innerText = '👁 Показать артикулы';
+  document.getElementById('toggleArticlesBtn').innerText = '👁';
   document.getElementById('toggleArticlesBtn').className = 'btn btn-sm btn-outline-dark ms-2';
   showInputBlock();
   renderTable();
